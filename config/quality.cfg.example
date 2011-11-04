@@ -1,0 +1,10 @@
+# Evergreen database settings
+dbname = evergreen.production
+dbhost = eunomia1
+dblogin = evergreen
+dbpassword = something
+
+# Reports settings
+$AUTHORITY_LINKING_TEST = on
+$SHORT_RECORDS_TEST = on
+$NO_041_044_TEST = on
