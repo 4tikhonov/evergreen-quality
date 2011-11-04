@@ -5,62 +5,76 @@ use FindBin qw($Bin);
 BEGIN { $libpath="$Bin" };
 use lib "$libpath";
 use lib "$libpath/../lib";
+use DB_File;
 
-$logdir = "$Bin/logs";
-mkdir $logdir unless (-e $logdir);
+use Getopt::Std;
+%options=();
+getopts("dl:f:o:s:",\%options);
 
-open(codefile, "$Bin/codes.txt");
-@codes = <codefile>;
-close(codefile);
+$DEBUG++ if ($options{d});
+$intlimit = $options{l} if ($options{l});
+$startid = $options{s} if ($options{s});
+$finalid = $options{f} if ($options{f});
+$intoffset = $options{o} if ($options{o});
 
-foreach $code (@codes)
-{
-   if ($code=~/^(\S+)/)
-   {
-        $langcodes{$1}++;
-   }
-}
-
-print "Content-type: text/html\n\n";
-my $DEBUG = 0;
 my $out = 0;
 my $LIMIT = 10000;
-my $offset = $ARGV[0] || 100;
-my $limit = $ARGV[1] || $LIMIT;
-my $finid = $ARGV[2];
+my $offset = $intoffset || 10000;
+my $limit = $intlimit || $LIMIT;
+my $finid = $finalid;
 
-my @authority_fields = (100, 110, 111, 600, 610, 611, 630, 648, 650, 651, 655, 700, 710, 711, 830);
+unless (keys %options)
+{
+print <<"EOL";
+Evergreen Quality Checking System
+(C) IISH 2011
+Usage: quality.pl params
+where params:
+-s start ID in Evergreen 
+-f final ID in Evergreen database
+-l limit of records for one transaction
+-o offset for each iteration
+
+Example:
+./quality.pl -s 1 -o 10000 -f 2000000
+EOL
+exit(0);
+}
+
+# Loading languages codes
+%langcodes = loadlangcodes($Bin);
+
+# Loading authority records order
+%fields = loadconfig("$Bin/config/authority.cfg");
+my @authority_fields = split(/\s+/, $fields{authfields});
 foreach $tag (@authority_fields)
 {
     $authority_fields{$tag}++;
 }
 
-%PROBLEMS = (	"100", "Personal Name field 100 isn't linked",
-		"110", "Corporate Name field 110 isn't linked",
-		"111", "Meeting Name field 111 isn't linked",
-		"600", "Personal Name field 600 isn't linked",
-		"610", "Corporate Name field 610 isn't linked",
-		"611", "Meeting Name field 611 isn't linked",
-		"630", "Uniform Title field 630 isn't linked",
-		"648", "Chronological Term field 648 isn't linked",
-		"650", "Topical Term field 650 isn't linked",
-		"655", "Genre/Form field 655 isn't linked",
-		"700", "Author field 700 is not linked",
-		"710", "Additional author field 710 isn't linked",
-		"711", "Organisation field 711 isn't linked",
-		"830", "Uniform Title field 830 isn't linked"
-);
-
-# What to check 
-$AUTHORITY_LINKING_TEST = 1;
-$SHORT_RECORDS_TEST = 1;
-$NO_041_044_TEST = 1;
+# Loading problems list
+%PROBLEMS = loadconfig("$Bin/config/problems.cfg");
 
 use DBI;
 
-my %dbconfig = loadconfig("$Bin/db.config");
-my ($dbname, $dbhost, $dblogin, $dbpassword) = ($dbconfig{dbname}, $dbconfig{dbhost}, $dbconfig{dblogin}, $dbconfig{dbpassword});
+my %config = loadconfig("$Bin/config/quality.cfg");
+my ($dbname, $dbhost, $dblogin, $dbpassword) = ($config{dbname}, $config{dbhost}, $config{dblogin}, $config{dbpassword});
 my $dbh = DBI->connect("dbi:Pg:dbname=$dbname;host=$dbhost",$dblogin,$dbpassword,{AutoCommit=>1,RaiseError=>1,PrintError=>0});
+
+# Reports
+my ($AUTHORITY_LINKING_TEST, $SHORT_RECORDS_TEST, $NO_041_044_TEST) = ($config{AUTHORITY_LINKING_TEST}, $config{SHORT_RECORDS_TEST}, $config{NO_041_044_TEST});
+my ($ADVANCE2TCN) = ($config{ADVANCE2TCN});
+$useDB++ if ($ADVANCE2TCN);
+
+if ($useDB)
+{
+   $dbdir = "$Bin/db";
+   mkdir $dbdir unless (-e $dbdir);
+   tie %advance, 'DB_File', "$dbdir/adv2id.db";
+}
+
+$logdir = $config{reportdir} || "$Bin/reports";
+mkdir $logdir unless (-e $logdir);
 
 open(advlog, ">$logdir/advance_holdings_missed.log");
 open(slog, ">$logdir/holdings_missed.log");
@@ -72,7 +86,7 @@ open(pidslog, ">$logdir/pids.log");
 open(langlog, ">$logdir/044a.log");
 open(langwrong, ">$logdir/044a.wrong.log");
 open(sortwrong, ">$logdir/sort.wrong.log");
-checkall();
+checkall($startid, $finid);
 close(advlog);
 close(slog);
 close(linkedlog);
@@ -94,11 +108,16 @@ foreach $lang (sort {$lang{$b} <=> $lang{$a}} keys %lang)
 close(langlog);
 close(sortwrong);
 
+if ($useDB)
+{
+    untie %advance;
+}
+
 sub checkall
 {
-    my ($startid, $endid) = (1, 1446220);
+    my ($startid, $endid) = @_;
     my $true = 1;
-    $startid = $offset if ($offset);
+    $startid = $offset if (!$startid && $offset);
 
     $currentid = $startid if ($startid);
     while ($true && $currentid < $endid)
@@ -213,6 +232,11 @@ sub getids
     while (my ($id, $marc, $date, $editor, $source, $callnumber, $sortkey, $barcode) = $sth->fetchrow_array())
     {
 	my $advanceid;
+
+	if ($marc=~/IISG\w*(\d+)/)
+	{
+	    $advance{$1} = $id;
+	}
 
 	if ($id > 0)
 	{
@@ -359,11 +383,34 @@ sub loadconfig
     {
         my $str = $_;
         $str=~s/\r|\n//g;
-        my ($name, $value) = split(/\s*\=\s*/, $str);
-        $config{$name} = $value;
+
+	unless ($str=~/^\#/)
+	{
+            my ($name, $value) = split(/\s*\=\s*/, $str);
+            $config{$name} = $value if ($value);
+	};
     }
     close(conf);
 
     return %config;
 }
 
+sub loadlangcodes
+{
+    my ($Bin, $DEBUG) = @_;
+    my %codes;
+
+    open(codefile, "$Bin/codes.cfg");
+    my @codes = <codefile>;
+    close(codefile);
+
+    foreach $code (@codes)
+    {
+        if ($code=~/^(\S+)/)
+        {
+            $codes{$1}++;
+        }
+    }
+
+    return %codes;
+}
