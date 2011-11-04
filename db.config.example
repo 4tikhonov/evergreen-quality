@@ -1,4 +1,0 @@
-dbname = evergreen.production
-dbhost = eunomia1
-dblogin = evergreen
-dbpassword = somepassword
