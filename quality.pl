@@ -7,6 +7,14 @@ use lib "$libpath";
 use lib "$libpath/../lib";
 use DB_File;
 
+$dbpid = "/openils/applications/pids/pids.db";
+$EXT_PIDS++ if (-e $dbpid);
+
+if ($EXT_PIDS)
+{
+   tie %realtimepids, 'DB_File', $dbpid;
+}
+
 use Getopt::Std;
 %options=();
 getopts("dl:f:o:s:",\%options);
@@ -86,6 +94,7 @@ open(pidslog, ">$logdir/pids.log");
 open(langlog, ">$logdir/044a.log");
 open(langwrong, ">$logdir/044a.wrong.log");
 open(sortwrong, ">$logdir/sort.wrong.log");
+open(advpids, ">$logdir/advpids.log");
 checkall($startid, $finid);
 close(advlog);
 close(slog);
@@ -93,6 +102,11 @@ close(linkedlog);
 close(authlog) if ($AUTHORITY_LINKING_TEST);
 close(shortlog) if ($SHORT_RECORDS_TEST);
 close(idlog);
+foreach $advanceid (sort keys %advancepids) 
+{
+    print advpids "$advanceid;;http://hld.handle.net/$advancepids{$advanceid}\n";
+}
+close(advpids);
 close(pids);
 
 foreach $lang (sort {$wronglang{$b} <=> $wronglang{$a}} keys %wronglang)
@@ -112,6 +126,12 @@ if ($useDB)
 {
     untie %advance;
 }
+
+
+if ($EXT_PIDS)
+{
+   untie %realtimepids;
+};
 
 sub checkall
 {
@@ -233,9 +253,12 @@ sub getids
     {
 	my $advanceid;
 
-	if ($marc=~/IISG\w*(\d+)/)
+	if ($marc=~/IISG(\w+)/)
 	{
-	    $advance{$1} = $id;
+	    my $advanceid = $1;
+	    $advanceid=~s/\D+//g;
+	    $advance{$advanceid} = $id;
+	    $advancepids{$advanceid} = $realtimepids{$id};
 	}
 
 	if ($id > 0)
@@ -251,6 +274,39 @@ sub getids
 		$advanceid = $1;
 		$advance{$id} = $advanceid;
 	    }
+
+	    # Images with barcodes
+	    if ($marc=~/hdl\.handle\.net\/(\S+?)</i)
+	    {
+		my $barcode = $1;
+		$old_barcodes{$advanceid} = $barcode;
+		$barcodes{$id} = $barcode;
+		$advancepids{$advanceid} = $barcode;
+
+		if ($barcode)
+		{
+		    #	id.realtime.pl -i 697211 -b 3005100111002
+		    print "$id $advanceid $barcode\n";
+		    $realtimepids{$id} = $barcode;
+		    $barcode=~s/\d+\///g;
+                    my $pidtmp;
+		    if ($barcode=~/N/)
+		    {
+			$pidtmp = `/openils/applications/PID-webservice/examples/perl/pid.realtime.pl -i $id`;
+	  	    }
+		    else
+		    {
+			$pidtmp = `/openils/applications/PID-webservice/examples/perl/pid.realtime.pl -i $id -b $barcode`;
+		    };
+		    my $newpid;
+                    if ($pidtmp=~/^(\d+)\s+\=>\s+(\S+)/)
+                    {
+			$newpid = $2;
+			$realtimepids{$id} = $newpid;
+		    }
+		    print "Set to PID $newpid\n";
+		}
+	    };
 
 	    # <datafield tag="044" ind1=" " ind2=" "><subfield code="a">ne</subfield></datafield>
 	    if ($marc=~/\"044\".+?code\=\"a\">(.+?)</)
