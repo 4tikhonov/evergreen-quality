@@ -70,7 +70,7 @@ my ($dbname, $dbhost, $dblogin, $dbpassword) = ($config{dbname}, $config{dbhost}
 my $dbh = DBI->connect("dbi:Pg:dbname=$dbname;host=$dbhost",$dblogin,$dbpassword,{AutoCommit=>1,RaiseError=>1,PrintError=>0});
 
 # Reports
-my ($AUTHORITY_LINKING_TEST, $SHORT_RECORDS_TEST, $NO_041_044_TEST) = ($config{AUTHORITY_LINKING_TEST}, $config{SHORT_RECORDS_TEST}, $config{NO_041_044_TEST});
+my ($AUTHORITY_LINKING_TEST, $SHORT_RECORDS_TEST, $NO_041_044_TEST, $MAKE_IMAGE_PID) = ($config{AUTHORITY_LINKING_TEST}, $config{SHORT_RECORDS_TEST}, $config{NO_041_044_TEST}, $config{MAKE_IMAGE_PID});
 my ($ADVANCE2TCN) = ($config{ADVANCE2TCN});
 $useDB++ if ($ADVANCE2TCN);
 
@@ -283,7 +283,7 @@ sub getids
 		$barcodes{$id} = $barcode;
 		$advancepids{$advanceid} = $barcode;
 
-		if ($barcode)
+		if ($barcode && $MAKE_IMAGE_PID)
 		{
 		    #	id.realtime.pl -i 697211 -b 3005100111002
 		    print "$id $advanceid $barcode\n";
