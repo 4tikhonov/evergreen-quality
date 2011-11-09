@@ -71,7 +71,7 @@ my $dbh = DBI->connect("dbi:Pg:dbname=$dbname;host=$dbhost",$dblogin,$dbpassword
 
 # Reports
 my ($AUTHORITY_LINKING_TEST, $SHORT_RECORDS_TEST, $NO_041_044_TEST, $MAKE_IMAGE_PID) = ($config{AUTHORITY_LINKING_TEST}, $config{SHORT_RECORDS_TEST}, $config{NO_041_044_TEST}, $config{MAKE_IMAGE_PID});
-my ($ADVANCE2TCN) = ($config{ADVANCE2TCN});
+my ($ADVANCE2TCN, $MAKE_MARC) = ($config{ADVANCE2TCN}, $config{MAKE_MARC});
 $useDB++ if ($ADVANCE2TCN);
 
 if ($useDB)
@@ -95,6 +95,7 @@ open(langlog, ">$logdir/044a.log");
 open(langwrong, ">$logdir/044a.wrong.log");
 open(sortwrong, ">$logdir/sort.wrong.log");
 open(advpids, ">$logdir/advpids.log");
+open(marc, ">$logdir/marc.xml") if ($MAKE_MARC);
 checkall($startid, $finid);
 close(advlog);
 close(slog);
@@ -121,6 +122,7 @@ foreach $lang (sort {$lang{$b} <=> $lang{$a}} keys %lang)
 }
 close(langlog);
 close(sortwrong);
+close(marc) if ($MAKE_MARC);
 
 if ($useDB)
 {
@@ -252,6 +254,8 @@ sub getids
     while (my ($id, $marc, $date, $editor, $source, $callnumber, $sortkey, $barcode) = $sth->fetchrow_array())
     {
 	my $advanceid;
+
+	print marc "$marc\n" if ($MAKE_MARC);
 
 	if ($marc=~/IISG(\w+)/)
 	{
