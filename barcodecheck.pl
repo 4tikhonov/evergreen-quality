@@ -8,24 +8,28 @@ use lib "$libpath/../lib";
 
 use Getopt::Std;
 %options=();
-getopts("db:h:l:o:",\%options);
+getopts("db:h:l:o:p:",\%options);
 
 $DEBUG++ if ($options{d});
 $barcodefile = $options{b} if ($options{b});
 $highresfile = $options{h} if ($options{h});
 $lowresfile = $options{l} if ($options{l});
 $outfile = $options{o} if ($option{o});
+$pubdir = $options{p} if ($options{p});
 $ORG = 10622;
-
-$callfile = "$Bin/callnumbers.log";
-loadcallnumbers($callfile);
-loadfile('barcodes', $barcodefile);
-loadbarcodes('barcodeshigh', $highresfile);
-loadbarcodes('barcodeslow', $lowresfile);
 
 $outdir = "$Bin/reports";
 mkdir ($outdir) unless (-d $outdir);
-$missedfile = "$outdir/missed.images.txt";
+$callfile = "$outdir/callnumbers.log";
+loadcallnumbers($callfile);
+loadfile('barcodes', $barcodefile);
+die "Error: Can't find file with barcodes\n" unless (-e $barcodefile);
+loadbarcodes('barcodeshigh', $highresfile);
+die "Error: Can't find file with high resolution files\n" unless (-e $highresfile);
+loadbarcodes('barcodeslow', $lowresfile);
+die "Error: Can't find file with low resolution files\n" unless (-e $lowresfile);
+
+$missedfile = "$outdir/missing.images.txt";
 $nohighresfile = "$outdir/nohighres.images.txt";
 
 open(missedfile, ">$missedfile");
@@ -55,6 +59,13 @@ foreach $barcode (sort keys %barcodes)
 close(missedfile);
 close(nohigh);
 
+if (-d $pubdir)
+{
+   $pubdir=~s/\/$//g;
+   my $cp1 = `cp -rf $missedfile $pubdir/`;
+   my $cp2 = `cp -rf $nohighresfile $pubdir/`;
+}
+
 sub loadfile
 {
     my ($type, $filename, $DEBUG) = @_;
@@ -76,13 +87,6 @@ sub loadfile
 	     $bar2adv{$barcode} = $Advance;
 	     $bar2id{$barcode} = $ID;
 	}
-
-	if ($ID=~/\d+/ && !$Advance)
-	{
-	     $barcode = $ID;
-	     $highres{$barcode}++ if ($type=~/high/i);
-	     $lowres{$barcode}++ if ($type=~/low/i);
-	}
     }
 
     return;
@@ -98,7 +102,8 @@ sub loadbarcodes
     while (<barfile>)
     {
 	$str = $_;
-	$str=~s/<\/barcode>/\n<\/barcode>/gsxi;	
+	$str=~s/(<barcode>|<\/barcode>)/\n/gsxi;	
+	print bartmp "$str";
     }
     close(barfile);
     close(bartmp);
@@ -109,8 +114,11 @@ sub loadbarcodes
         $str = $_;
 	$str=~s/\r|\n//g;
 	$barcode = $str;
-        $highres{$barcode}++ if ($type=~/high/i);
-        $lowres{$barcode}++ if ($type=~/low/i);
+	if ($str=~/\d+/)
+	{
+           $highres{$barcode}++ if ($type=~/high/i);
+           $lowres{$barcode}++ if ($type=~/low/i);
+	};
     }
     close(barfile);
 
