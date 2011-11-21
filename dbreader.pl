@@ -19,7 +19,7 @@ if ($dbfile)
     }
     %pids = %PIDS;
 
-    foreach $key (sort {$db{$a} <=> $db{$b}} keys %db)
+    foreach $key (sort keys %db)
     {
 	my $tcn = $db{$key};
 	

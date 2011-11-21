@@ -30,6 +30,7 @@ my $LIMIT = 10000;
 my $offset = $intoffset || 10000;
 my $limit = $intlimit || $LIMIT;
 my $finid = $finalid;
+my $uid = 10622;
 
 unless (keys %options)
 {
@@ -69,9 +70,11 @@ my %config = loadconfig("$Bin/config/quality.cfg");
 my ($dbname, $dbhost, $dblogin, $dbpassword) = ($config{dbname}, $config{dbhost}, $config{dblogin}, $config{dbpassword});
 my $dbh = DBI->connect("dbi:Pg:dbname=$dbname;host=$dbhost",$dblogin,$dbpassword,{AutoCommit=>1,RaiseError=>1,PrintError=>0});
 
+loadbarcodes($dbh);
+
 # Reports
 my ($AUTHORITY_LINKING_TEST, $SHORT_RECORDS_TEST, $NO_041_044_TEST, $MAKE_IMAGE_PID) = ($config{AUTHORITY_LINKING_TEST}, $config{SHORT_RECORDS_TEST}, $config{NO_041_044_TEST}, $config{MAKE_IMAGE_PID});
-my ($ADVANCE2TCN, $MAKE_MARC) = ($config{ADVANCE2TCN}, $config{MAKE_MARC});
+my ($ADVANCE2TCN, $MAKE_MARC, $CHECK_LEADER) = ($config{ADVANCE2TCN}, $config{MAKE_MARC}, $config{CHECK_LEADER});
 $useDB++ if ($ADVANCE2TCN);
 
 if ($useDB)
@@ -95,7 +98,7 @@ open(langlog, ">$logdir/044a.log");
 open(langwrong, ">$logdir/044a.wrong.log");
 open(sortwrong, ">$logdir/sort.wrong.log");
 open(advpids, ">$logdir/advpids.log");
-open(marc, ">$logdir/marc.xml") if ($MAKE_MARC);
+open(marc, ">$MAKE_MARC") if ($MAKE_MARC);
 checkall($startid, $finid);
 close(advlog);
 close(slog);
@@ -119,6 +122,34 @@ close(langwrong);
 foreach $lang (sort {$lang{$b} <=> $lang{$a}} keys %lang)
 {
     print langlog "$lang $lang{$lang}\n";
+}
+
+if ($CHECK_LEADER)
+{
+    open(reportstat, ">$logdir/report.leader.log");
+    open(subreport, ">$logdir/subtypes.log");
+    foreach $type (sort {$report{$b} <=> $report{$a}} keys %report)
+    {
+	if ($leadercount)
+	{
+	    my $percent = sprintf("%.2f", ($report{$type} / $leadercount) * 100);
+	    print reportstat "$type $report{$type} $percent%\n";
+	};
+
+	my %thissubtypes;
+	%thissubtype = %{$subtypes{$type}} if ($subtypes{$type});
+	foreach $utype (sort {$thissubtype{$b} <=> $thissubtype{$a}} keys %thissubtype)
+	{
+	    unless ($known{$utype})
+	    {
+	        my $percent = sprintf("%.2f", ($thissubtype{$utype} / $subcount) * 100);
+	        print subreport "$utype $thissubtype{$utype} $percent% $subcount\n"; 
+		$known{$utype}++;
+	    };
+	}
+    }
+    close(reportstat);
+    close(subreport);
 }
 close(langlog);
 close(sortwrong);
@@ -188,7 +219,6 @@ sub getMARC
         $marc=~s/\s+/ /g;
         $marc=~s/<datafield tag\=\"902\" ind1=\" \" ind2\=\" \">.+?<\/datafield>/g/;
 
-        $uid = 10622;
         $sid = "eg";
         #$strpid = "oai:iish";
         $pid = "$uid/$sid/$id";
@@ -246,7 +276,7 @@ sub getids
     $sqlquery.=" order by b.id asc " if ($AUTHORITY_LINKING_TEST);
     #$sqlquery.=" order by b.id asc limit $limit" if ($offset);
 
-    print "$sqlquery\n"; # if ($DEBUG2);
+    print "SQL $sqlquery\n"; # if ($DEBUG2);
     my $sth = $dbh->prepare("$sqlquery");
     $sth->execute();
     %biblio = ();
@@ -255,6 +285,7 @@ sub getids
     {
 	my $advanceid;
 
+	$marc=~s/\r|\n//g;
 	print marc "$marc\n" if ($MAKE_MARC);
 
 	if ($marc=~/IISG(\w+)/)
@@ -263,6 +294,61 @@ sub getids
 	    $advanceid=~s/\D+//g;
 	    $advance{$advanceid} = $id;
 	    $advancepids{$advanceid} = $realtimepids{$id};
+	}
+
+	if ($CHECK_LEADER)
+	{
+	    # extract content statistics
+	    if ($marc=~/<leader>(.+?)<\/leader>/sxi)
+	    {
+		my $leader = $1;
+		my ($subtype, $doctype);
+		if ($marc=~/\"655\".+?code\=\"a\">(.+?)</)
+                {
+		    $subtype = $1;
+		}
+                if ($marc=~/\"245\".+?code\=\"k\">(.+?)</)
+                {
+                    $doctype = $1;
+                }
+
+		if ($leader=~/nam/i)
+		{
+		    $report{books}++;
+		}
+		elsif ($leader=~/nas/i)
+		{
+		    $report{serials}++;
+		}
+		elsif ($leader=~/nkm/i)
+		{
+		    $report{visual}++;
+		    $subtypes{visual}{poster}++ if ($subtype=~/poster/i);
+		    $subtypes{visual}{photo}++ if ($subtype=~/photo/i);
+		    $subtypes{visual}{drawing}++ if ($subtype=~/drawing/i);
+		    $subcount++ if ($subtype=~/(poster|photo|drawing)/i);
+		}
+		elsif ($leader=~/ngm/i)
+		{
+		    $report{movie}++;
+		    $subtypes{movie}{video}++ if ($subtype=~/video/i);
+		    $subtypes{movie}{dvd}++ if ($subtype=~/dvd/i);
+		    $subcount++ if ($subtype=~/(video|dvd)/i);
+		}
+		elsif ($leader=~/nim/i)
+		{
+		    $report{sound}++;
+		}
+		elsif ($leader=~/nrm/i)
+		{
+		    $report{object}++;
+		    $subtypes{object}{texttile}++ if ($subtype=~/texttile/i);
+		    $subcount++ if ($subtype=~/texttile/i);
+		}
+
+		$leadercount++;
+	    }
+
 	}
 
 	if ($id > 0)
@@ -280,9 +366,24 @@ sub getids
 	    }
 
 	    # Images with barcodes
+	    my ($handle, $trueimage);
+
 	    if ($marc=~/hdl\.handle\.net\/(\S+?)</i)
 	    {
-		my $barcode = $1;
+		$handle = $1;
+	    };
+
+	    my $MAKE_IMAGE_PID;
+	    if ($imagebars{$id})
+	    {
+	        $trueimage = $imagebars{$id};
+		#$MAKE_IMAGE_PID = 1;
+	    };
+	    $trueimage = 0 if ($handle);
+
+	    if ($trueimage)
+	    {
+		my $barcode = $trueimage || $handle;
 		$old_barcodes{$advanceid} = $barcode;
 		$barcodes{$id} = $barcode;
 		$advancepids{$advanceid} = $barcode;
@@ -473,4 +574,34 @@ sub loadlangcodes
     }
 
     return %codes;
+}
+
+sub loadbarcodes
+{
+    my ($dbh, $DEBUG) = @_;
+    my (%barcodelist, $imagebars);
+
+    $sqlquery = "select b.id, c.barcode from asset.call_number as n, asset.copy as c, biblio.record_entry as b where n.id=c.call_number and n.record=b.id ";
+#    $sqlquery.=" limit 10";
+
+    print "$sqlquery\n"; # if ($DEBUG2);
+    my $sth = $dbh->prepare("$sqlquery");
+    $sth->execute();
+
+    while (my ($id, $barcode) = $sth->fetchrow_array())
+    {
+	$barcodelist{$id} = $barcode;
+	if ($barcode=~/^3005/)
+	{
+	    $imagebars{$id} = "$uid/$barcode";
+	    $imagebars++;
+	}
+	if ($barcode=~/\/3005/)
+	{
+            $imagebars{$id} = "$uid/$barcode";
+            $imagebars++;
+	}
+    };
+
+    return %barcodelist;
 }
