@@ -86,7 +86,9 @@ if ($useDB)
    tie %advance, 'DB_File', "$dbdir/adv2id.db";
 }
 
-$logdir = $config{reportdir} || "$Bin/reports";
+$logdir = $config{reportdir} || "$Bin/reports.tmp";
+$mainlogdir=$logdir;
+$mainlogdir=~s/\.tmp//g;
 mkdir $logdir unless (-e $logdir);
 
 open(advlog, ">$logdir/advance_holdings_missed.log");
@@ -103,6 +105,7 @@ open(advpids, ">$logdir/advpids.log");
 open(marc, ">$MAKE_MARC") if ($MAKE_MARC);
 open(repeated, ">$CHECK_REPEATED_FIELDS") if ($CHECK_REPEATED_FIELDS);
 open(unorder, ">$CHECK_ORDER_FIELDS") if ($CHECK_ORDER_FIELDS);
+open(callnumbers, ">$logdir/callnumbers.log");
 checkall($startid, $finid);
 close(advlog);
 close(slog);
@@ -160,6 +163,7 @@ if ($CHECK_LEADER)
 close(langlog);
 close(sortwrong);
 close(marc) if ($MAKE_MARC);
+close(callnumbers);
 
 if ($useDB)
 {
@@ -171,6 +175,11 @@ if ($EXT_PIDS)
 {
    untie %realtimepids;
 };
+
+if (-d $mainlogdir)
+{
+    `cp -rf $logdir/* $mainlogdir/`;
+}
 
 sub checkall
 {
@@ -275,7 +284,7 @@ sub getids
     my ($startid, $endid, $limit, $DEBUG) = @_;
     my ($ids, $idcount, $missed, $lost, %notlinked, %linked);
 
-    $sqlquery = "select b.id, b.marc from biblio.record_entry as b where 1=1";
+    my $sqlquery = "select b.id, b.marc, b.create_date, b.editor, b.source, c.call_number, n.label_sortkey, c.barcode from asset.call_number as n, asset.copy as c, biblio.record_entry as b where n.id=c.call_number and n.record=b.id";
     $sqlquery.=" order by random() limit $limit" if ($RANDOM);
     $sqlquery.=" and b.id >= $startid" if ($startid);
     $sqlquery.=" and b.id <= $endid" if ($endid);
@@ -364,6 +373,11 @@ sub getids
 	    }
 
 	}
+        if ($callnumber)
+        {
+            $sortkey=~s/\_/\//g;
+            $callnumbers{$id} = $sortkey;
+        }
 
 	if ($id > 0)
 	{
