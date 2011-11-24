@@ -101,7 +101,7 @@ open(langwrong, ">$logdir/044a.wrong.log");
 open(sortwrong, ">$logdir/sort.wrong.log");
 open(advpids, ">$logdir/advpids.log");
 open(marc, ">$MAKE_MARC") if ($MAKE_MARC);
-open(repeted, ">$CHECK_REPEATED_FIELDS") if ($CHECK_REPEATED_FIELDS);
+open(repeated, ">$CHECK_REPEATED_FIELDS") if ($CHECK_REPEATED_FIELDS);
 open(unorder, ">$CHECK_ORDER_FIELDS") if ($CHECK_ORDER_FIELDS);
 checkall($startid, $finid);
 close(advlog);
@@ -116,7 +116,7 @@ foreach $advanceid (sort keys %advancepids)
 }
 close(advpids);
 close(pids);
-close(repeted);
+close(repeated);
 close(unorder);
 
 foreach $lang (sort {$wronglang{$b} <=> $wronglang{$a}} keys %wronglang)
@@ -295,7 +295,7 @@ sub getids
 	{
 	   my ($status, $newxml, $marc) = is_wrong($marc);
 	   # Status: unordered, repeated, zero (it's ok)
-	   print repeated "$id\n" if ($status eq 'repeated');
+	   print repeated "$id\n" if ($status=~/repeat/i);
 	   print unorder "$id\n" if ($status eq 'unordered' && $CHECK_ORDER_FIELDS);
 	};
 
