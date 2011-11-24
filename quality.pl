@@ -5,7 +5,9 @@ use FindBin qw($Bin);
 BEGIN { $libpath="$Bin" };
 use lib "$libpath";
 use lib "$libpath/../lib";
+use lib "$libpath/lib";
 use DB_File;
+use Quality;
 
 $dbpid = "/openils/applications/pids/pids.db";
 $EXT_PIDS++ if (-e $dbpid);
@@ -74,7 +76,7 @@ loadbarcodes($dbh);
 
 # Reports
 my ($AUTHORITY_LINKING_TEST, $SHORT_RECORDS_TEST, $NO_041_044_TEST, $MAKE_IMAGE_PID) = ($config{AUTHORITY_LINKING_TEST}, $config{SHORT_RECORDS_TEST}, $config{NO_041_044_TEST}, $config{MAKE_IMAGE_PID});
-my ($ADVANCE2TCN, $MAKE_MARC, $CHECK_LEADER) = ($config{ADVANCE2TCN}, $config{MAKE_MARC}, $config{CHECK_LEADER});
+my ($ADVANCE2TCN, $MAKE_MARC, $CHECK_LEADER, $CHECK_REPEATED_FIELDS, $CHECK_ORDER_FIELDS) = ($config{ADVANCE2TCN}, $config{MAKE_MARC}, $config{CHECK_LEADER}, $config{CHECK_REPEATED_FIELDS}, $config{CHECK_ORDER_FIELDS});
 $useDB++ if ($ADVANCE2TCN);
 
 if ($useDB)
@@ -99,6 +101,8 @@ open(langwrong, ">$logdir/044a.wrong.log");
 open(sortwrong, ">$logdir/sort.wrong.log");
 open(advpids, ">$logdir/advpids.log");
 open(marc, ">$MAKE_MARC") if ($MAKE_MARC);
+open(repeted, ">$CHECK_REPEATED_FIELDS") if ($CHECK_REPEATED_FIELDS);
+open(unorder, ">$CHECK_ORDER_FIELDS") if ($CHECK_ORDER_FIELDS);
 checkall($startid, $finid);
 close(advlog);
 close(slog);
@@ -112,6 +116,8 @@ foreach $advanceid (sort keys %advancepids)
 }
 close(advpids);
 close(pids);
+close(repeted);
+close(unorder);
 
 foreach $lang (sort {$wronglang{$b} <=> $wronglang{$a}} keys %wronglang)
 {
@@ -143,7 +149,7 @@ if ($CHECK_LEADER)
 	    unless ($known{$utype})
 	    {
 	        my $percent = sprintf("%.2f", ($thissubtype{$utype} / $subcount) * 100);
-	        print subreport "$utype $thissubtype{$utype} $percent% $subcount\n"; 
+	        print subreport "$utype $thissubtype{$utype} $percent% \n"; 
 		$known{$utype}++;
 	    };
 	}
@@ -284,6 +290,14 @@ sub getids
     while (my ($id, $marc, $date, $editor, $source, $callnumber, $sortkey, $barcode) = $sth->fetchrow_array())
     {
 	my $advanceid;
+
+	if ($CHECK_REPEATED_FIELDS)
+	{
+	   my ($status, $newxml, $marc) = is_wrong($marc);
+	   # Status: unordered, repeated, zero (it's ok)
+	   print repeated "$id\n" if ($status eq 'repeated');
+	   print unorder "$id\n" if ($status eq 'unordered' && $CHECK_ORDER_FIELDS);
+	};
 
 	$marc=~s/\r|\n//g;
 	print marc "$marc\n" if ($MAKE_MARC);
