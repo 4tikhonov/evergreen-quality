@@ -14,6 +14,7 @@ $VERSION = 1.00;
 		fieldsexplorer
 		analyze_order
 		is_wrong
+		sorting_marc
             );
 
 sub fieldsexplorer
@@ -30,7 +31,7 @@ sub is_wrong
     {
         $xml =~ s/\n//sgo;
         $xml =~ s/^<\?xml.+\?\s*>//go;
-        $xml =~ s/<record.+?>/<record>/go;
+#        $xml =~ s/<record.+?>/<record>/go;
         $xml =~ s/>\s+</></go;
         $xml =~ s/\p{Cc}//go;
         $xml=~s/(<\/datafield>)/$1\n/g;
@@ -39,21 +40,28 @@ sub is_wrong
         my (%known);
         foreach $field (@fields)
         {
-            $origxml.="$field\n";
-            unless ($known{$field})
-            {
-                $tmpxml.="$field\n";
-            }
-            $known{$field}++;
-
+	    my ($trusted, $tag) = (1, 0);
             if ($field=~/tag\=\"(\d+)\"/)
             {
-                my $tag = $1;
+                $tag = $1;
+	    }
+	    $trusted = 0 if ($known{$field});
+	    $trusted = 0 if ($tag > 902);
+	    $trusted = 0 unless ($tag);
+
+	    if ($trusted)
+	    {
+                $origxml.="$field\n";
+                unless ($known{$field})
+                {
+                   $tmpxml.="$field\n";
+                }
+                $known{$field}++;
+
                 push(@ordertag, $tag);
                 $marc{$field} = $tag;
                 $repeat{$field}++;
-            }
-
+	    };
         }
 
         $changed = 'repeated' if ($origxml ne $tmpxml);
@@ -72,6 +80,10 @@ sub sorting_marc
 {
     my ($xml, $DEBUG) = @_;
     my ($xmlsorted, %marc);
+
+    $xml=~s/(<\/datafield>)/$1\n/g;
+    $xml=~s/(<\/controlfield>)/$1\n/g;
+    $xml=~s/\n\n/\n/gsxi;
 
     my @lines = split(/\n/, $xml);
     foreach $line (@lines)
