@@ -76,7 +76,7 @@ foreach $rec_id (@record_list)
        print "Sorted\n$newxml\n";
     }
 
-    if ($makerepair && $status=~/repeat/)
+    if ($makerepair && $status=~/(repeat|lang)/)
     {
 	my $editor = OpenILS::Utils::CStoreEditor->new(xact=>1);
         $newxml =~ s/\n//sgo;
@@ -170,7 +170,11 @@ sub getrecords
     foreach $tcn (@items)
     {
 	$tcn=~s/\r|\n//g;
-	push(@records, $tcn) if ($tcn=~/^\d+$/);
+	if ($tcn=~/^(\d+)\s+\S+/)
+	{
+	    $tcn = $1;
+	}
+	push(@records, $tcn) if ($tcn=~/^\d+$/); # && $tcn>915360);
     }
 
     return @records;

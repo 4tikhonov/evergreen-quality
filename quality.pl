@@ -77,7 +77,7 @@ loadbarcodes($dbh);
 # Reports
 my ($AUTHORITY_LINKING_TEST, $SHORT_RECORDS_TEST, $NO_041_044_TEST, $MAKE_IMAGE_PID) = ($config{AUTHORITY_LINKING_TEST}, $config{SHORT_RECORDS_TEST}, $config{NO_041_044_TEST}, $config{MAKE_IMAGE_PID});
 my ($ADVANCE2TCN, $MAKE_MARC, $CHECK_LEADER, $CHECK_REPEATED_FIELDS, $CHECK_ORDER_FIELDS) = ($config{ADVANCE2TCN}, $config{MAKE_MARC}, $config{CHECK_LEADER}, $config{CHECK_REPEATED_FIELDS}, $config{CHECK_ORDER_FIELDS});
-my ($CHECK_COUNTRY_CODES) = ($config{CHECK_COUNTRY_CODES});
+my ($CHECK_COUNTRY_CODES, $MATERIAL_CODES) = ($config{CHECK_COUNTRY_CODES}, $config{MATERIAL_CODES});
 $useDB++ if ($ADVANCE2TCN);
 
 if ($useDB)
@@ -161,6 +161,36 @@ if ($CHECK_LEADER)
     close(reportstat);
     close(subreport);
 }
+
+if ($MATERIAL_CODES)
+{
+    open(matfile, ">$MATERIAL_CODES");
+    foreach $matcode (sort {$matcodes{$b} <=> $matcodes{$a}} keys %matcodes)
+    {
+	print matfile "$matcode $matcodes{$matcode}\n";
+    } 
+    close(matfile);
+}
+
+if ($CHECK_COUNTRY_CODES)
+{
+    open(country, ">$CHECK_COUNTRY_CODES");
+    foreach $country (sort keys %countrycodes)
+    {
+	if ($country=~/^(us|uk|ca)/)
+	{
+	    my %tcn;
+	    %tcn = %{$countrycodes{$country}} if ($countrycodes{$country});
+
+	    foreach $tcn (sort keys %tcn)
+	    {
+		print country "$tcn $country\n";
+	    }
+	}
+    }
+    close(country);
+}
+
 close(langlog);
 close(sortwrong);
 close(marc) if ($MAKE_MARC);
@@ -320,7 +350,7 @@ sub getids
 	    $advancepids{$advanceid} = $realtimepids{$id};
 	}
 
-	if ($CHECK_LEADER)
+	if ($CHECK_LEADER || $MATERIAL_CODES)
 	{
 	    # extract content statistics
 	    if ($marc=~/<leader>(.+?)<\/leader>/sxi)
@@ -369,6 +399,15 @@ sub getids
 		    $subtypes{object}{texttile}++ if ($subtype=~/texttile/i);
 		    $subcount++ if ($subtype=~/texttile/i);
 		}
+
+		if ($MATERIAL_CODES)
+		{
+		    #<leader>00000n(\w{2}) a22000007a 4500</leader>
+		    if ($leader=~/^\S+(\w{2})/)
+		    {
+			$matcodes{$1}++;
+	  	    }
+		};
 
 		$leadercount++;
 	    }
@@ -447,6 +486,7 @@ sub getids
 	    {
 		my $lang = $1;
 		$lang{$lang}++;
+		$countrycodes{$lang}{$id}++;
 
 		unless ($langcodes{$lang})
 		{

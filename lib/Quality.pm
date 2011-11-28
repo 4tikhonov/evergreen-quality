@@ -25,7 +25,8 @@ sub fieldsexplorer
 sub is_wrong
 {
     my ($xml, $DEBUG) = @_;
-    my ($marc, $changed, $tmpxml, $origxml, @ordertag, %marc, %repeat);
+    my ($marc, $changed, $tmpxml, $origxml, @ordertag, %marc, %repeat, $lang);
+    my %codes = ("us", "xxu", "uk", "xxk", "ca","xxc");
 
     if ($xml)
     {
@@ -35,6 +36,11 @@ sub is_wrong
         $xml =~ s/>\s+</></go;
         $xml =~ s/\p{Cc}//go;
         $xml=~s/(<\/datafield>)/$1\n/g;
+
+        if ($xml=~/\"044\".+?code\=\"a\">(.+?)</)
+        {
+            $lang = $1;
+	};
 
         my @fields = split(/\n/, $xml);
         my (%known);
@@ -65,6 +71,14 @@ sub is_wrong
         }
 
         $changed = 'repeated' if ($origxml ne $tmpxml);
+	$changed = 'lang' if ($lang=~/^(us|uk|ca)$/);
+
+	if ($changed=~/lang/)
+	{
+	   $tmpxml=~s/(\"044\".+?code\=\"a\">)(.+?)</$1$codes{$2}</g;
+print "CODE\n";
+	}
+
         print "$tmpxml\n$changed\n$origxml\n" if ($DEBUG);
         #$marc = MARC::Record->new_from_xml($tmpxml);
     };
