@@ -177,7 +177,7 @@ if ($CHECK_COUNTRY_CODES)
     open(country, ">$CHECK_COUNTRY_CODES");
     foreach $country (sort keys %countrycodes)
     {
-	if ($country=~/^(us|uk|ca)/)
+	if ($country=~/^(us|uk|can|cn|cs)/)
 	{
 	    my %tcn;
 	    %tcn = %{$countrycodes{$country}} if ($countrycodes{$country});

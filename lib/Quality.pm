@@ -26,7 +26,7 @@ sub is_wrong
 {
     my ($xml, $DEBUG) = @_;
     my ($marc, $changed, $tmpxml, $origxml, @ordertag, %marc, %repeat, $lang);
-    my %codes = ("us", "xxu", "uk", "xxk", "ca","xxc");
+    my %codes = ("us", "xxu", "uk", "xxk", "can","xxc", "cn", "xxc", "cs", "-cs");
 
     if ($xml)
     {
@@ -52,7 +52,7 @@ sub is_wrong
                 $tag = $1;
 	    }
 	    $trusted = 0 if ($known{$field});
-	    $trusted = 0 if ($tag > 902);
+	    #$trusted = 0 if ($tag > 902);
 	    $trusted = 0 unless ($tag);
 
 	    if ($trusted)
@@ -71,7 +71,7 @@ sub is_wrong
         }
 
         $changed = 'repeated' if ($origxml ne $tmpxml);
-	$changed = 'lang' if ($lang=~/^(us|uk|ca)$/);
+	$changed = 'lang' if ($lang=~/^(us|uk|cn|cs)$/);
 
 	if ($changed=~/lang/)
 	{
